@@ -264,6 +264,405 @@ Overall, Clee is a powerful and flexible library that makes it easy to create co
 
 ---
 
+EXAMPLES
+--------
+
+### Options
+
+Options are command-line flags parsed from `--long` or `-s` (short) syntax.
+
+```ruby
+clee(:example) do
+  # Boolean flag: --verbose or -v
+  # Also generates --no-verbose
+  option :verbose, :v
+
+  # Required value: --output FILE or -o FILE
+  option :output, :o, value: :required
+
+  # Optional value: --format [FORMAT] or -f [FORMAT]
+  option :format, :f, value: :optional
+
+  run do
+    p options
+    # => {:verbose=>true, :output=>"out.txt", :format=>"json"}
+  end
+end
+```
+
+```sh
+~> example --verbose --output out.txt --format json
+~> example -v -o out.txt -f json
+~> example --no-verbose -o out.txt
+```
+
+### Environment Variables
+
+Environment variables can be passed inline or from the shell environment.
+
+```ruby
+clee(:deploy) do
+  env :API_KEY, value: :required
+  env :DEBUG
+
+  run do
+    p env
+    # => {:API_KEY=>"secret123", :DEBUG=>true}
+  end
+end
+```
+
+```sh
+# Inline syntax
+~> deploy API_KEY=secret123 DEBUG
+
+# Shell environment
+~> API_KEY=secret123 DEBUG=1 deploy
+
+# Mixed
+~> API_KEY=secret123 deploy DEBUG
+```
+
+### Params (Options + Environment Combined)
+
+Use `param` to accept a value as either an option OR environment variable.
+
+```ruby
+clee(:backup) do
+  # Accepts --database, -d, DATABASE=, or DATABASE env var
+  param :database, :d, value: :required
+
+  run do
+    puts "Backing up: #{params[:database]}"
+  end
+end
+```
+
+```sh
+~> backup --database mydb
+~> backup -d mydb
+~> backup database=mydb
+~> DATABASE=mydb backup
+```
+
+### Repeating Options
+
+When an option is passed multiple times, values accumulate into an array.
+
+```ruby
+clee(:tag) do
+  option :tag, :t, value: :required
+
+  run do
+    tags = Array(params[:tag])
+    tags.each { |t| puts "Tagged: #{t}" }
+  end
+end
+```
+
+```sh
+~> tag -t ruby -t cli -t awesome
+Tagged: ruby
+Tagged: cli
+Tagged: awesome
+```
+
+### Accessing Arguments
+
+After options are parsed, remaining arguments are available in `argv`.
+
+```ruby
+clee(:copy) do
+  option :recursive, :r
+
+  run do
+    source, dest = argv
+    puts "Copying #{source} -> #{dest}"
+    puts "(recursively)" if params[:recursive]
+  end
+end
+```
+
+```sh
+~> copy -r /src /dest
+Copying /src -> /dest
+(recursively)
+```
+
+### Modes (Subcommands)
+
+Define subcommands with `run :mode` or nested modes with `run :mode, :submode`.
+
+```ruby
+clee(:git) do
+  option :verbose, :v
+
+  run(:status) do
+    puts "Checking status..."
+  end
+
+  run(:remote, :add) do
+    name, url = argv
+    puts "Adding remote #{name} -> #{url}"
+  end
+
+  run(:remote, :remove) do
+    name = argv.first
+    puts "Removing remote #{name}"
+  end
+
+  # Default when no mode matches
+  run do
+    help!
+  end
+end
+```
+
+```sh
+~> git status
+Checking status...
+
+~> git remote add origin https://github.com/...
+Adding remote origin -> https://github.com/...
+
+~> git remote remove origin
+Removing remote origin
+
+~> git --help
+# prints auto-generated help
+```
+
+### Standard IO
+
+`clee` provides duplicated IO handles for safe manipulation.
+
+```ruby
+clee(:process) do
+  run do
+    # stdin, stdout, stderr are available
+    stdin.each_line do |line|
+      stdout.puts line.upcase
+    end
+  end
+end
+```
+
+```sh
+~> echo "hello world" | process
+HELLO WORLD
+
+~> cat file.txt | process > output.txt
+```
+
+### Logging
+
+Built-in colored logger that respects TTY detection.
+
+```ruby
+clee(:deploy) do
+  run do
+    log.message "Starting deployment..."
+    log.warning "This may take a while"
+    log.success "Step 1 complete"
+    log.failure "Step 2 failed!"
+    log.special "Check the dashboard"
+
+    # Shorthand
+    log "Just a message"
+    log "Custom color", color: :magenta
+  end
+end
+```
+
+Log levels: `message`, `warning`, `success`, `failure`, `special`
+
+### ANSI Colors
+
+Direct access to ANSI escape codes via the `ansi` helper.
+
+```ruby
+clee(:colorful) do
+  run do
+    puts "#{ansi.red}Error:#{ansi.clear} something went wrong"
+    puts "#{ansi.bold}#{ansi.green}Success!#{ansi.clear}"
+    puts "#{ansi.underline}Important#{ansi.clear}"
+  end
+end
+```
+
+Available colors: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`
+
+Background colors: `on_black`, `on_red`, `on_green`, `on_yellow`, `on_blue`, `on_magenta`, `on_cyan`, `on_white`
+
+Styles: `bold`, `dark`, `underline`, `blink`, `reverse`, `concealed`, `clear`/`reset`
+
+### Help Messages
+
+Auto-generated help is available via `--help`, `-h`, or the `help` subcommand.
+
+```ruby
+clee(:mytool) do
+  tldr 'a tool that does amazing things'
+
+  option :verbose, :v
+  option :output, :o, value: :required
+  env :API_KEY, value: :required
+
+  run(:process) do
+    # ...
+  end
+
+  run do
+    help!
+  end
+end
+```
+
+```sh
+~> mytool --help
+~> mytool -h
+~> mytool help
+```
+
+Override with custom help:
+
+```ruby
+clee(:mytool) do
+  help <<~HELP
+    NAME
+      mytool - does amazing things
+
+    USAGE
+      mytool [options] <command> [args]
+
+    COMMANDS
+      process    Process input files
+
+    OPTIONS
+      -v, --verbose    Enable verbose output
+      -o, --output     Specify output file
+
+    EXAMPLES
+      mytool process input.txt -o output.txt
+      mytool --verbose process *.txt
+  HELP
+
+  run do
+    help!
+  end
+end
+```
+
+### Exit Codes
+
+`clee` handles exit codes automatically:
+
+* `exit 0` - success (default for completed runs)
+* `exit 1` - error (default for help, missing args, invalid options)
+
+Trigger help with a specific exit code:
+
+```ruby
+run do
+  help!(exit: 0)   # success
+  help!(exit: 1)   # error (default)
+  help!(exit: 42)  # custom
+end
+```
+
+### Error Handling
+
+Invalid options and missing arguments are handled automatically:
+
+```sh
+~> mytool --invalid
+invalid option: --invalid
+
+~> mytool --output
+missing argument: --output
+```
+
+### Utility Methods
+
+```ruby
+clee(:util) do
+  run do
+    # Get the program name
+    puts progname  # => "util"
+
+    # Format exception messages
+    begin
+      raise "oops"
+    rescue => e
+      puts emsg(e)  # => "oops (RuntimeError)\n<backtrace>"
+    end
+  end
+end
+```
+
+### Complete Example
+
+A realistic example combining multiple features:
+
+```ruby
+#!/usr/bin/env ruby
+require 'clee'
+
+clee(:dbutil) do
+  tldr 'database utility commands'
+
+  param :database, :d, value: :required
+  option :verbose, :v
+  option :dry_run, :n
+
+  run(:migrate) do
+    db = params[:database]
+    log.message "Migrating #{db}..." if params[:verbose]
+
+    if params[:dry_run]
+      log.warning "DRY RUN - no changes made"
+    else
+      # perform migration
+      log.success "Migration complete"
+    end
+  end
+
+  run(:seed) do
+    files = argv
+    db = params[:database]
+
+    if files.empty?
+      log.failure "No seed files specified"
+      exit 1
+    end
+
+    files.each do |file|
+      log.message "Seeding #{db} from #{file}"
+    end
+
+    log.success "Seeding complete"
+  end
+
+  run(:console) do
+    db = params[:database]
+    exec "psql #{db}"
+  end
+
+  run do
+    help!(exit: 0)
+  end
+end
+```
+
+```sh
+~> dbutil migrate -d myapp_dev -v
+~> dbutil seed -d myapp_dev users.sql products.sql
+~> DATABASE=myapp_dev dbutil console
+~> dbutil --help
+```
+
+---
+
 SING IT 🎵
 ----------
 * **DOCS are dead, long live AI!**
