@@ -345,6 +345,35 @@ end
 ~> DATABASE=mydb backup
 ```
 
+### Boolean Flags with Negation
+
+Boolean options automatically generate a `--no-` variant.
+
+```ruby
+clee(:build) do
+  option :minify, :m
+
+  run do
+    if params[:minify]
+      puts "Minifying output..."
+    else
+      puts "Skipping minification"
+    end
+  end
+end
+```
+
+```sh
+~> build --minify
+Minifying output...
+
+~> build --no-minify
+Skipping minification
+
+~> build -m
+Minifying output...
+```
+
 ### Repeating Options
 
 When an option is passed multiple times, values accumulate into an array.
@@ -570,6 +599,10 @@ run do
 end
 ```
 
+### Signal Handling
+
+`clee` automatically traps `SIGPIPE` and `SIGINT` for clean exits when piping output or pressing Ctrl+C.
+
 ### Error Handling
 
 Invalid options and missing arguments are handled automatically:
@@ -598,6 +631,77 @@ clee(:util) do
     end
   end
 end
+```
+
+### Method Aliases
+
+For convenience, several methods have shorter aliases:
+
+```ruby
+clee(:example) do
+  # These are equivalent:
+  option :verbose, :v
+  opt :verbose, :v
+
+  # These are equivalent:
+  env :API_KEY
+  envs :API_KEY
+
+  # These are equivalent:
+  param :database
+  params :database
+end
+```
+
+### Block vs Method Definition Style
+
+You can define your run handler as a block or as a method:
+
+```ruby
+# Block style
+clee(:example) do
+  run do
+    puts "Hello"
+  end
+end
+
+# Method definition style
+clee(:example) do
+  def run
+    puts "Hello"
+  end
+end
+```
+
+Both styles have access to the same instance variables and methods (`argv`, `params`, `options`, `env`, `log`, etc.).
+
+### Inspecting Available Modes
+
+Access the list of registered modes programmatically:
+
+```ruby
+clee(:mytool) do
+  run(:init) { }
+  run(:build) { }
+  run(:deploy, :staging) { }
+  run(:deploy, :production) { }
+
+  run do
+    puts "Available commands:"
+    modes.each do |mode|
+      puts "  #{progname} #{mode.join(' ')}"
+    end
+  end
+end
+```
+
+```sh
+~> mytool
+Available commands:
+  mytool init
+  mytool build
+  mytool deploy staging
+  mytool deploy production
 ```
 
 ### Complete Example
